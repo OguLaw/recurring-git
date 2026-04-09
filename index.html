@@ -2,75 +2,56 @@
 <html>
 <head>
   <meta charset="utf-8">
+  <script src="https://p.trellocdn.com/power-ups/client.js"></script>
+  <script>
+    window.onload = function() {
+      var WORKER_URL = 'https://trello-recurring.late-disk-56be.workers.dev';
+
+      var FREQ_LABELS = {
+        daily:    '🔁 Her Gün',
+        weekdays: '🔁 Hafta İçi',
+        weekly:   '🔁 Haftalık',
+        monthly:  '🔁 Aylık',
+        custom:   '🔁 Özel'
+      };
+
+      TrelloPowerUp.initialize({
+        'card-badges': function(t) {
+          return t.get('card', 'shared', 'recurring').then(function(cfg) {
+            if (!cfg) return [];
+            return [{ text: FREQ_LABELS[cfg.frequency] || '🔁 Tekrar', color: 'blue' }];
+          });
+        },
+        'card-detail-badges': function(t) {
+          return t.get('card', 'shared', 'recurring').then(function(cfg) {
+            if (!cfg) return [];
+            return [{
+              title: 'Tekrar Sıklığı',
+              text: FREQ_LABELS[cfg.frequency] || '—',
+              color: 'blue',
+              callback: function(t) {
+                return t.popup({ title: '🔁 Tekrarlayan Görev', url: './modal.html', height: 460 });
+              }
+            }];
+          });
+        },
+        'card-buttons': function(t) {
+          return t.get('card', 'shared', 'recurring').then(function(cfg) {
+            return [{
+              icon: 'https://cdn.jsdelivr.net/npm/lucide-static@0.321.0/icons/repeat.svg',
+              text: cfg ? (FREQ_LABELS[cfg.frequency] || '🔁 Tekrar') : '🔁 Tekrar Ayarla',
+              callback: function(t) {
+                return t.popup({ title: '🔁 Tekrarlayan Görev Ayarları', url: './modal.html', height: 460 });
+              }
+            }];
+          });
+        }
+      }, {
+        appKey: '2e8f20abb8e479bcc97bfc45079ec19b',
+        appName: 'Recurring Tasks'
+      });
+    };
+  </script>
 </head>
-<body>
-<script src="https://p.trellocdn.com/power-ups/client.js"></script>
-<script>
-// ─── CONFIG: deploy sonrası bunu güncelle ───────────────────────
-const WORKER_URL = 'https://trello-recurring.late-disk-56be.workers.dev';
-// ────────────────────────────────────────────────────────────────
-
-const FREQ_LABELS = {
-  daily:    '🔁 Her Gün',
-  weekdays: '🔁 Hafta İçi',
-  weekly:   '🔁 Haftalık',
-  monthly:  '🔁 Aylık',
-  custom:   '🔁 Özel'
-};
-
-TrelloPowerUp.initialize({
-
-  // ── Kart ön yüzünde rozet göster ──────────────────────────────
-  'card-badges': function(t) {
-    return t.get('card', 'shared', 'recurring').then(function(cfg) {
-      if (!cfg) return [];
-      return [{
-        text: FREQ_LABELS[cfg.frequency] || '🔁 Tekrar',
-        color: 'blue'
-      }];
-    });
-  },
-
-  // ── Kart arka yüzünde detay rozet ─────────────────────────────
-  'card-detail-badges': function(t) {
-    return t.get('card', 'shared', 'recurring').then(function(cfg) {
-      if (!cfg) return [];
-      return [{
-        title: 'Tekrar Sıklığı',
-        text: FREQ_LABELS[cfg.frequency] || '—',
-        color: 'blue',
-        callback: function(t) {
-          return t.popup({
-            title: '🔁 Tekrarlayan Görev',
-            url: './modal.html',
-            height: 460
-          });
-        }
-      }];
-    });
-  },
-
-  // ── Kart butonları ─────────────────────────────────────────────
-  'card-buttons': function(t) {
-    return t.get('card', 'shared', 'recurring').then(function(cfg) {
-      return [{
-        icon: 'https://cdn.jsdelivr.net/npm/lucide-static@0.321.0/icons/repeat.svg',
-        text: cfg ? (FREQ_LABELS[cfg.frequency] || '🔁 Tekrar') : '🔁 Tekrar Ayarla',
-        callback: function(t) {
-          return t.popup({
-            title: '🔁 Tekrarlayan Görev Ayarları',
-            url: './modal.html',
-            height: 460
-          });
-        }
-      }];
-    });
-  }
-
-}, {
-  appKey:  '2e8f20abb8e479bcc97bfc45079ec19b',
-  appName: 'Recurring Tasks'
-});
-</script>
-</body>
+<body></body>
 </html>

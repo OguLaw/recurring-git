@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="https://p.trellocdn.com/power-ups/client.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 13px;
+      color: #172b4d;
+      background: #fff;
+      padding: 12px 14px 14px;
+    }
+
+    .section-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #6b778c;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      margin: 14px 0 5px;
+    }
+    .section-label:first-child { margin-top: 0; }
+
+    select, textarea {
+      width: 100%;
+      padding: 6px 8px;
+      border: 2px solid #dfe1e6;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #172b4d;
+      background: #fafbfc;
+      transition: border-color .15s;
+    }
+    select:focus, textarea:focus {
+      outline: none;
+      border-color: #0052cc;
+      background: #fff;
+    }
+
+    /* ── Checkbox list ── */
+    .check-list {
+      max-height: 110px;
+      overflow-y: auto;
+      border: 2px solid #dfe1e6;
+      border-radius: 4px;
+      background: #fafbfc;
+    }
+    .check-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 8px;
+      cursor: pointer;
+    }
+    .check-item:hover { background: #f0f4ff; }
+    .check-item input { accent-color: #0052cc; cursor: pointer; }
+    .check-item span { user-select: none; }
+
+    .hint {
+      font-size: 11px;
+      color: #6b778c;
+      margin-top: 4px;
+      line-height: 1.4;
+    }
+
+    #customDatesGroup { display: none; margin-top: 0; }
+    #customDates {
+      height: 70px;
+      resize: vertical;
+      font-family: monospace;
+      font-size: 12px;
+    }
+
+    /* ── Completion history ── */
+    #historyGroup { display: none; }
+    .history-box {
+      max-height: 70px;
+      overflow-y: auto;
+      border: 2px solid #dfe1e6;
+      border-radius: 4px;
+      padding: 5px 8px;
+      background: #f8fff8;
+      font-size: 12px;
+      font-family: monospace;
+      color: #2d6a4f;
+      line-height: 1.6;
+    }
+
+    /* ── Buttons ── */
+    .btn-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 16px;
+    }
+    .btn {
+      flex: 1;
+      padding: 8px 10px;
+      border: none;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s, transform .1s;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn-primary { background: #0052cc; color: #fff; }
+    .btn-primary:hover { background: #0065ff; }
+    .btn-danger  { background: #de350b; color: #fff; }
+    .btn-danger:hover  { background: #ff5630; }
+    .btn-ghost  { background: #f4f5f7; color: #42526e; border: 1px solid #dfe1e6; }
+    .btn-ghost:hover  { background: #ebecf0; }
+
+    .loader { text-align: center; padding: 30px; color: #6b778c; font-size: 12px; }
+  </style>
+</head>
+<body>
+
+  <div id="loader" class="loader">Listeler yükleniyor…</div>
+
+  <div id="form" style="display:none">
+
+    <div class="section-label">Hedef Liste</div>
+    <select id="targetList"></select>
+    <p class="hint">Kart bu listeye taşınacak (veya zaten buradaysa due date güncellenecek).</p>
+
+    <div class="section-label">İzlenecek Listeler</div>
+    <div id="monitoredLists" class="check-list"></div>
+    <p class="hint">Kart bu listelerden birindeyse "tamamlandı" kabul edilir ve hedef listeye geri alınır.</p>
+
+    <div class="section-label">Tekrar Sıklığı</div>
+    <select id="frequency" onchange="onFreqChange()">
+      <option value="daily">Her gün</option>
+      <option value="weekdays">Her hafta içi (Pzt – Cmt)</option>
+      <option value="weekly">Her hafta (aynı gün)</option>
+      <option value="monthly">Her ay (aynı gün)</option>
+      <option value="custom">Özel tarihler</option>
+    </select>
+
+    <div id="customDatesGroup">
+      <div class="section-label">Özel Tarihler</div>
+      <textarea id="customDates" placeholder="2025-05-01&#10;2025-05-15&#10;2025-06-01"></textarea>
+      <p class="hint">Her satıra bir tarih — YYYY-MM-DD formatında.</p>
+    </div>
+
+    <div id="historyGroup">
+      <div class="section-label">Tamamlanma Geçmişi</div>
+      <div id="historyBox" class="history-box"></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-ghost"   onclick="cancel()">İptal</button>
+      <button class="btn btn-danger"  id="removeBtn" onclick="removeRecurring()" style="display:none">Kaldır</button>
+      <button class="btn btn-primary" onclick="save()">Kaydet</button>
+    </div>
+
+  </div>
+
+<script>
+// ── CONFIG ───────────────────────────────────────────────────────
+const WORKER_URL = 'https://trello-recurring.late-disk-56be.workers.dev';
+// ────────────────────────────────────────────────────────────────
+
+const t = TrelloPowerUp.iframe();
+let allLists = [];
+
+async function init() {
+  try {
+    const [lists, existingCfg] = await Promise.all([
+      t.lists('all'),
+      t.get('card', 'shared', 'recurring')
+    ]);
+
+    allLists = lists;
+
+    // ── Hedef liste dropdown ──────────────────────────────────
+    const targetEl = document.getElementById('targetList');
+    targetEl.innerHTML = lists.map(l =>
+      `<option value="${l.id}">${l.name}</option>`
+    ).join('');
+
+    // ── İzlenen listeler checkboxes ───────────────────────────
+    const monEl = document.getElementById('monitoredLists');
+    monEl.innerHTML = lists.map(l =>
+      `<label class="check-item">
+        <input type="checkbox" value="${l.id}">
+        <span>${l.name}</span>
+      </label>`
+    ).join('');
+
+    if (existingCfg) {
+      // Mevcut ayarları doldur
+      document.getElementById('removeBtn').style.display = 'block';
+      targetEl.value = existingCfg.targetListId;
+      document.getElementById('frequency').value = existingCfg.frequency;
+      onFreqChange();
+
+      if (existingCfg.customDates && existingCfg.customDates.length) {
+        document.getElementById('customDates').value = existingCfg.customDates.join('\n');
+      }
+
+      // İzlenen listeler
+      (existingCfg.monitoredListIds || []).forEach(lid => {
+        const cb = monEl.querySelector(`input[value="${lid}"]`);
+        if (cb) cb.checked = true;
+      });
+
+      // Tamamlanma geçmişi
+      if (existingCfg.completionHistory && existingCfg.completionHistory.length) {
+        document.getElementById('historyGroup').style.display = 'block';
+        document.getElementById('historyBox').innerHTML =
+          existingCfg.completionHistory
+            .slice().reverse()
+            .map(d => `✅ ${d}`)
+            .join('<br>');
+      }
+
+    } else {
+      // Yeni kart: varsayılan = ilk liste hedef, diğerleri izleniyor
+      if (lists.length > 0) {
+        targetEl.value = lists[0].id;
+        const checkboxes = monEl.querySelectorAll('input');
+        checkboxes.forEach((cb, i) => { if (i > 0) cb.checked = true; });
+      }
+    }
+
+    document.getElementById('loader').style.display = 'none';
+    document.getElementById('form').style.display = 'block';
+    t.sizeTo(document.body).catch(() => {});
+
+  } catch (err) {
+    document.getElementById('loader').textContent = 'Hata: ' + err.message;
+  }
+}
+
+function onFreqChange() {
+  const f = document.getElementById('frequency').value;
+  document.getElementById('customDatesGroup').style.display = f === 'custom' ? 'block' : 'none';
+  t.sizeTo(document.body).catch(() => {});
+}
+
+async function save() {
+  const card = await t.card('id', 'idBoard');
+
+  const targetListId = document.getElementById('targetList').value;
+  const frequency    = document.getElementById('frequency').value;
+
+  const monitoredListIds = [
+    ...document.querySelectorAll('#monitoredLists input:checked')
+  ].map(cb => cb.value).filter(id => id !== targetListId);
+
+  let customDates = null;
+  if (frequency === 'custom') {
+    customDates = document.getElementById('customDates').value
+      .split('\n').map(d => d.trim()).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d));
+  }
+
+  // Mevcut geçmişi koru
+  const existingCfg = await t.get('card', 'shared', 'recurring');
+  const completionHistory = existingCfg ? (existingCfg.completionHistory || []) : [];
+
+  const config = {
+    targetListId,
+    monitoredListIds,
+    frequency,
+    customDates,
+    completionHistory,
+    startDate: new Date().toISOString().split('T')[0]
+  };
+
+  // Trello Power-Up storage'a kaydet
+  await t.set('card', 'shared', 'recurring', config);
+
+  // Worker'a kaydet (zamanlanmış çalışma için)
+  try {
+    await fetch(`${WORKER_URL}/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cardId: card.id, boardId: card.idBoard, ...config })
+    });
+  } catch (e) {
+    console.warn('Worker kayıt hatası (yerel ayarlar yine de kaydedildi):', e);
+  }
+
+  t.closePopup();
+}
+
+async function removeRecurring() {
+  const card = await t.card('id');
+  await t.remove('card', 'shared', 'recurring');
+  try {
+    await fetch(`${WORKER_URL}/unregister/${card.id}`, { method: 'DELETE' });
+  } catch (e) { /* silent */ }
+  t.closePopup();
+}
+
+function cancel() {
+  t.closePopup();
+}
+
+init();
+</script>
+</body>
+</html>
